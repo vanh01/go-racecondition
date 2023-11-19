@@ -1,0 +1,20 @@
+version: "3"
+
+services:
+  db:
+    container_name: ordering-system-db
+    image: postgres:15.1-alpine
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=ordering-system
+      - POSTGRES_PASSWORD=123456
+    ports:
+      - '5432:5432'
+    volumes:
+      - ordering-system-postgre:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./postgresql.auto.conf:/var/lib/postgresql/data/postgresql.auto.conf
+volumes:
+  ordering-system-postgre:
+    name: ordering-system-postgre
+    driver: local
