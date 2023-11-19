@@ -80,25 +80,24 @@ func CreateNewOrdering(user_id, product_id, quantity int) error {
 	return nil
 }
 
-func OrderingProcess(user_id, product_id, quantity int, wg, wgReadProduct, wgCreateOdering *sync.WaitGroup) {
+func OrderingProcess(user_id, product_id, quantity int, wg *sync.WaitGroup, i chan int) {
 	defer wg.Done()
-	defer wgCreateOdering.Done()
+	i <- 1
 	fmt.Println(user_id, product_id, quantity)
 	// get quantity from product table
 	fmt.Println("Get quantity stage")
 	ok := CheckProduct(product_id, quantity)
-	wgReadProduct.Done()
-	if ok {
-		fmt.Println("The product isn't yet sold out")
-	} else {
+	if !ok {
+		<-i
 		return
 	}
-	wgReadProduct.Wait()
+	fmt.Println("The product isn't yet sold out")
 	// Wait for all users to finish reading product data
 
 	fmt.Println("Update quantity stage")
 	if DecreaseQuantityByProductId(product_id, quantity) != nil {
 		fmt.Println("Failed to update quantity")
+		<-i
 		return
 	}
 
@@ -108,10 +107,11 @@ func OrderingProcess(user_id, product_id, quantity int, wg, wgReadProduct, wgCre
 		fmt.Println("Failed to create ordering, need to roll back quantity of product")
 		if DecreaseQuantityByProductId(product_id, quantity) != nil {
 			fmt.Println("Failed to roll back quantity")
+			<-i
 			return
 		}
 	}
-	fmt.Println("Created ordering successfully!")
+	fmt.Println("Created ordering successfully!", <-i)
 }
 
 func PrepareData(product_id, number_of_user int) {
@@ -168,20 +168,13 @@ func main() {
 	productId := 1
 	quantityPerOrder := 1
 	numberOfUser := 100000
-	numberPerBlock := 1000
 	PrepareData(productId, numberOfUser)
+	maxReq := make(chan int, 1000)
 
 	var wg sync.WaitGroup
 	wg.Add(numberOfUser)
-	for i := 1; i <= numberOfUser/numberPerBlock; i++ {
-		var wgReadProduct sync.WaitGroup
-		var wgCreateOdering sync.WaitGroup
-		wgReadProduct.Add(numberPerBlock)
-		wgCreateOdering.Add(numberPerBlock)
-		for j := 1; j <= numberPerBlock; j++ {
-			go OrderingProcess(j, productId, quantityPerOrder, &wg, &wgReadProduct, &wgCreateOdering)
-		}
-		wgCreateOdering.Wait()
+	for i := 1; i <= numberOfUser; i++ {
+		go OrderingProcess(i, productId, quantityPerOrder, &wg, maxReq)
 	}
 	wg.Wait()
 }
